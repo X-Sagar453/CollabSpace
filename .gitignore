@@ -1,0 +1,14 @@
+node_modules/
+**/node_modules/
+
+.env
+**/.env
+
+dist/
+build/
+
+collab-server/temp/
+**/temp/
+
+.DS_Store
+Thumbs.db
