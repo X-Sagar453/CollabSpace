@@ -5,6 +5,7 @@ import { setActiveFile } from '../store/filesSlice';
 import CodeMirror from '@uiw/react-codemirror';
 import * as Y from 'yjs';
 import { yCollab } from 'y-codemirror.next';
+import TerminalPanel from "./TerminalPanel";
 
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
@@ -35,7 +36,7 @@ const EditorPane = ({ ydoc, activeFileId, activeFile }) => {
       height="100%"
       theme="dark"
       extensions={extensions}
-      className="h-full text-sm" // Slightly smaller, cleaner text
+      className="h-full text-sm"
     />
   );
 };
@@ -46,14 +47,11 @@ const CodeEditor = ({ socket, roomId }) => {
   const activeFile = files.find(f => f.id === activeFileId);
   const dispatch = useDispatch();
 
-  const [output, setOutput] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
   const [ydoc, setYdoc] = useState(null);
   const [activeUsers, setActiveUsers] = useState(1);
   const [ping, setPing] = useState(0);
-  const [execTime, setExecTime] = useState(0);
 
-  const [terminalHeight, setTerminalHeight] = useState(150); 
+  const [terminalHeight, setTerminalHeight] = useState(200); 
   const isDraggingTerminal = useRef(false);
 
   const handleTerminalMouseDown = (e) => {
@@ -67,7 +65,7 @@ const CodeEditor = ({ socket, roomId }) => {
 
   const handleTerminalMouseMove = (e) => {
     if (!isDraggingTerminal.current) return;
-    const newHeight = window.innerHeight - e.clientY - 30; // Accounting for slightly larger bottom bar
+    const newHeight = window.innerHeight - e.clientY - 30;
     if (newHeight >= 40 && newHeight <= window.innerHeight * 0.8) setTerminalHeight(newHeight);
   };
 
@@ -138,27 +136,19 @@ const CodeEditor = ({ socket, roomId }) => {
     return () => window.removeEventListener('download-active-file', handleDownload);
   }, [activeFileId, activeFile, ydoc]);
 
-  const handleRunCode = async () => {
+  // ==========================================
+  // NEW: SMART RUN BUTTON LOGIC
+  // ==========================================
+  const handleRunCode = () => {
     if (!ydoc || !activeFileId || !activeFile) return;
-    setIsRunning(true);
-    setOutput('Running...');
-    const startTime = performance.now();
     const currentCode = ydoc.getText(activeFileId).toString();
 
-    try {
-      const response = await fetch('http://localhost:5000/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: currentCode, filename: activeFile.name }),
-      });
-      const data = await response.json();
-      setExecTime((performance.now() - startTime).toFixed(0));
-      setOutput(data.output);
-    } catch (error) {
-      setOutput('Error connecting to execution server.');
-    } finally {
-      setIsRunning(false);
-    }
+    // Send the code directly to the new terminal engine!
+    socket.emit("run-code", {
+      roomId,
+      filename: activeFile.name,
+      code: currentCode
+    });
   };
 
   const handlePreviewWebpage = () => {
@@ -203,7 +193,8 @@ const CodeEditor = ({ socket, roomId }) => {
     );
   }
 
-  const isExecutable = activeFile.name.endsWith('.js') || activeFile.name.endsWith('.py');
+  // Check if the file is a Python or JavaScript file so we can enable the button
+  const isExecutable = activeFile?.name.endsWith('.js') || activeFile?.name.endsWith('.py');
 
   return (
     <div className="relative w-full h-full bg-black flex flex-col font-sans">
@@ -236,19 +227,20 @@ const CodeEditor = ({ socket, roomId }) => {
             onClick={handlePreviewWebpage}
             className="px-3 py-1 text-xs font-medium text-zinc-300 bg-[#111111] border border-zinc-800 rounded hover:bg-zinc-800 transition-colors"
           >
-            Preview
+            Preview Webpage
           </button>
 
+          {/* SMART RUN BUTTON */}
           <button 
             onClick={handleRunCode}
-            disabled={isRunning || !isExecutable}
+            disabled={!isExecutable}
             className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-              isRunning || !isExecutable 
+              !isExecutable 
                 ? 'bg-[#111111] text-zinc-600 border border-zinc-800 cursor-not-allowed' 
                 : 'bg-zinc-50 text-black hover:bg-zinc-200'
             }`}
           >
-            {isRunning ? 'Running...' : 'Run'}
+            Run Code
           </button>
         </div>
       </div>
@@ -264,18 +256,18 @@ const CodeEditor = ({ socket, roomId }) => {
         className="h-1 bg-zinc-800 hover:bg-blue-500 cursor-row-resize transition-colors z-10 shrink-0"
       />
 
-      {/* TERMINAL */}
+      {/* INTERACTIVE TERMINAL */}
       <div 
-        className="bg-[#111111] text-zinc-300 p-4 font-mono text-xs overflow-y-auto shrink-0 flex flex-col" 
+        className="bg-[#111111] border-t border-zinc-800 shrink-0 flex flex-col" 
         style={{ height: `${terminalHeight}px`, minHeight: '40px' }}
       >
-        <div className="flex justify-between items-center text-zinc-500 mb-2 select-none shrink-0 uppercase tracking-widest text-[10px]">
-          <span>Terminal</span>
-          {output && (
-            <button onClick={() => setOutput('')} className="hover:text-zinc-300 transition-colors">Clear</button>
-          )}
+        <div className="flex justify-between items-center px-4 py-1.5 bg-[#0a0a0a] border-b border-zinc-800 text-zinc-500 select-none shrink-0 uppercase tracking-widest text-[10px]">
+          <span>Interactive Shell</span>
         </div>
-        <pre className="whitespace-pre-wrap wrap-break flex-grow">{output}</pre>
+        
+        <div className="flex-grow overflow-hidden relative">
+           <TerminalPanel socket={socket} roomId={roomId} />
+        </div>
       </div>
 
       {/* STATUS BAR */}
@@ -285,7 +277,7 @@ const CodeEditor = ({ socket, roomId }) => {
           <span>Ping: {ping}ms</span>
         </div>
         <div>
-          <span>Exec: {execTime > 0 ? `${execTime}ms` : '--'}</span>
+          <span className="text-emerald-500 font-semibold">Terminal Connected</span>
         </div>
       </div>
     </div>

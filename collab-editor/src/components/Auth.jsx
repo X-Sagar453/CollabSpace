@@ -53,7 +53,7 @@ function Auth() {
     <div className="relative min-h-screen w-full bg-black text-zinc-50 flex flex-col items-center justify-center overflow-hidden font-sans">
       
       {/* ULTRA MINIMAL BACKGROUND GRID */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[24px_24px]"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
 
       {/* TOP LOGO REDIRECT */}
       <div className="absolute top-8 left-8 z-20">
@@ -77,7 +77,7 @@ function Auth() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="w-full max-w-95 p-8 bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl relative z-10"
+        className="w-full max-w-[380px] p-8 bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl relative z-10"
       >
         <div className="mb-8 text-center">
           <h2 className="text-2xl font-bold text-zinc-50 tracking-tight mb-2">
@@ -120,6 +120,7 @@ function Auth() {
                   required={!isLogin}
                   value={formData.username}
                   onChange={handleChange}
+                  autoComplete="username"
                   className="w-full bg-black text-zinc-50 px-4 py-2.5 border border-zinc-800 rounded-lg focus:outline-none focus:border-zinc-500 transition-colors placeholder-zinc-600 text-sm"
                   placeholder="e.g., CodeNinja"
                 />
@@ -137,6 +138,7 @@ function Auth() {
               required
               value={formData.email}
               onChange={handleChange}
+              autoComplete="email"
               className="w-full bg-black text-zinc-50 px-4 py-2.5 border border-zinc-800 rounded-lg focus:outline-none focus:border-zinc-500 transition-colors placeholder-zinc-600 text-sm"
               placeholder="you@example.com"
             />
@@ -152,6 +154,7 @@ function Auth() {
               required
               value={formData.password}
               onChange={handleChange}
+              autoComplete={isLogin ? "current-password" : "new-password"}
               className="w-full bg-black text-zinc-50 px-4 py-2.5 border border-zinc-800 rounded-lg focus:outline-none focus:border-zinc-500 transition-colors placeholder-zinc-600 text-sm"
               placeholder="••••••••"
             />

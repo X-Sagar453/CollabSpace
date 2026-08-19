@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "framer-motion";
 
-function Home() {
+function Join() {
   const navigate = useNavigate();
   const savedUsername = localStorage.getItem('username');
 
@@ -53,15 +53,16 @@ function Home() {
 
     try {
       const res = await fetch(`http://localhost:5000/api/room/${trimmedId}`);
-      const data = await res.json();
 
       if (isJoinMode) {
-        if (res.status === 404 || !data.exists) {
+        // FIXED: Only check for 404 status
+        if (res.status === 404) {
           setRoomError("Room does not exist. Please switch to 'Create' to make a new one.");
           return;
         }
       } else {
-        if (res.status === 200 && data.exists) {
+        // FIXED: Only check for 200 status
+        if (res.status === 200) {
           setRoomError("Room already exists. Please switch to 'Join' to enter.");
           return;
         }
@@ -80,9 +81,9 @@ function Home() {
     
     try {
       const res = await fetch(`http://localhost:5000/api/room/${selectedRecentRoom}`);
-      const data = await res.json();
       
-      if (res.status === 404 || !data.exists) {
+      // FIXED: Only check for 404 status
+      if (res.status === 404) { 
         alert("This workspace no longer exists. It may have been deleted.");
         const updatedHistory = recentRooms.filter(room => room !== selectedRecentRoom);
         setRecentRooms(updatedHistory);
@@ -114,7 +115,7 @@ function Home() {
       const res = await fetch(`http://localhost:5000/api/room/${roomToDelete}?username=${username}`, { method: 'DELETE' });
       
       if (res.status === 403) {
-        // Silently handle the 403 (user is not the owner). We don't need the alert since the modal text already explains it.
+        // Silently handle the 403 (user is not the owner)
       } else if (!res.ok && res.status !== 404) {
         throw new Error("Failed to communicate with server");
       }
@@ -324,4 +325,4 @@ function Home() {
   );
 }
 
-export default Home;
+export default Join;

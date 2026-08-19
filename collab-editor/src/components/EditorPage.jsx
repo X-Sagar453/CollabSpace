@@ -138,7 +138,7 @@ function EditorPage() {
           <div 
             onClick={() => navigate('/join')}
             className="flex items-center space-x-3 cursor-pointer group"
-            title="Return to Home"
+            title="Return to Join"
           >
             <div className="w-8 h-8 rounded bg-[#111111] border border-zinc-800 flex items-center justify-center transition-colors group-hover:border-zinc-600">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-zinc-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
