@@ -2,6 +2,8 @@
 
 A premium real-time collaborative Cloud IDE. CollabSpace allows multiple developers to write, sync, and execute code simultaneously in secure, isolated rooms. It features a fully integrated, interactive pseudo-terminal powered by native OS bindings.
 
+![CollabSpace Interface](CollabSpace.png)
+
 ## ✨ Key Features
 
 *   **Real-Time Collaboration:** Millisecond-latency code syncing across multiple clients using CRDTs (Yjs) and WebSockets.
