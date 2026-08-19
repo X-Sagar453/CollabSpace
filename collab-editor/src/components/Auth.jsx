@@ -1,6 +1,9 @@
+// src/components/Auth.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 function Auth() {
   const navigate = useNavigate();
@@ -11,7 +14,7 @@ function Auth() {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (error) setError(''); // Clear error when user types
+    if (error) setError(''); 
   };
 
   const handleSubmit = async (e) => {
@@ -25,7 +28,8 @@ function Auth() {
       : { username: formData.username, email: formData.email, password: formData.password };
 
     try {
-      const res = await fetch(`http://localhost:5000${endpoint}`, {
+      // SECURED: Using dynamic environment variable
+      const res = await fetch(`${BACKEND_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -37,7 +41,6 @@ function Auth() {
         throw new Error(data.error || 'Authentication failed');
       }
 
-      // Save credentials and redirect to the join workspace page
       localStorage.setItem('token', data.token);
       localStorage.setItem('username', data.username);
       navigate('/join');
@@ -53,7 +56,7 @@ function Auth() {
     <div className="relative min-h-screen w-full bg-black text-zinc-50 flex flex-col items-center justify-center overflow-hidden font-sans">
       
       {/* ULTRA MINIMAL BACKGROUND GRID */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[24px_24px]"></div>
 
       {/* TOP LOGO REDIRECT */}
       <div className="absolute top-8 left-8 z-20">

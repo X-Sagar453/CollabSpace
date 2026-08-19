@@ -1,8 +1,10 @@
-// src/components/Home.jsx
+// src/components/Join.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "framer-motion";
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 function Join() {
   const navigate = useNavigate();
@@ -52,16 +54,15 @@ function Join() {
     if (!trimmedId) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/room/${trimmedId}`);
+      // SECURED: Using dynamic environment variable
+      const res = await fetch(`${BACKEND_URL}/api/room/${trimmedId}`);
 
       if (isJoinMode) {
-        // FIXED: Only check for 404 status
         if (res.status === 404) {
           setRoomError("Room does not exist. Please switch to 'Create' to make a new one.");
           return;
         }
       } else {
-        // FIXED: Only check for 200 status
         if (res.status === 200) {
           setRoomError("Room already exists. Please switch to 'Join' to enter.");
           return;
@@ -80,9 +81,9 @@ function Join() {
     if (!selectedRecentRoom) return;
     
     try {
-      const res = await fetch(`http://localhost:5000/api/room/${selectedRecentRoom}`);
+      // SECURED: Using dynamic environment variable
+      const res = await fetch(`${BACKEND_URL}/api/room/${selectedRecentRoom}`);
       
-      // FIXED: Only check for 404 status
       if (res.status === 404) { 
         alert("This workspace no longer exists. It may have been deleted.");
         const updatedHistory = recentRooms.filter(room => room !== selectedRecentRoom);
@@ -112,7 +113,8 @@ function Join() {
   const confirmDeleteRoom = async () => {
     if (!roomToDelete) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/room/${roomToDelete}?username=${username}`, { method: 'DELETE' });
+      // SECURED: Using dynamic environment variable
+      const res = await fetch(`${BACKEND_URL}/api/room/${roomToDelete}?username=${username}`, { method: 'DELETE' });
       
       if (res.status === 403) {
         // Silently handle the 403 (user is not the owner)
@@ -120,7 +122,6 @@ function Join() {
         throw new Error("Failed to communicate with server");
       }
 
-      // Clear from local UI history regardless of backend global deletion
       const updatedHistory = recentRooms.filter(room => room !== roomToDelete);
       setRecentRooms(updatedHistory);
       localStorage.setItem(`recentRooms_${username}`, JSON.stringify(updatedHistory));
@@ -141,11 +142,11 @@ function Join() {
   return (
     <div className="relative h-screen w-full bg-black text-zinc-50 flex flex-col overflow-hidden font-sans">
       
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[24px_24px]"></div>
 
       <AnimatePresence>
         {isConnecting && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-100 bg-black flex flex-col items-center justify-center">
             <div className="relative w-16 h-16 mb-8 border-4 border-zinc-800 border-t-blue-500 rounded-full animate-spin"></div>
             <h2 className="text-xl font-bold text-zinc-50 mb-2 tracking-wide">Connecting</h2>
             <p className="text-zinc-500 font-mono text-xs">Securing workspace...</p>
@@ -153,7 +154,7 @@ function Join() {
         )}
       </AnimatePresence>
 
-      <header className="relative z-50 w-full flex justify-between items-center px-6 md:px-12 pt-6 pb-2 min-h-[80px] shrink-0">
+      <header className="relative z-50 w-full flex justify-between items-center px-6 md:px-12 pt-6 pb-2 min-h-20 shrink-0">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} onClick={() => navigate('/')} className="flex items-center space-x-3 cursor-pointer group">
           <div className="w-8 h-8 rounded bg-[#111111] border border-zinc-800 flex items-center justify-center transition-colors group-hover:border-zinc-600">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-zinc-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
@@ -274,7 +275,7 @@ function Join() {
           {recentRooms.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-[#111111] p-5 rounded-xl border border-zinc-800">
               <h3 className="text-xs font-medium text-zinc-500 mb-3 uppercase tracking-wider">Recent Rooms</h3>
-              <div className="space-y-2 max-h-[140px] overflow-y-auto custom-scrollbar">
+              <div className="space-y-2 max-h-35 overflow-y-auto custom-scrollbar">
                 {recentRooms.map((room) => (
                   <div key={room} onClick={() => handleRecentRoomClick(room)} className="flex items-center justify-between p-2.5 bg-black border border-zinc-800 rounded-lg cursor-pointer hover:border-zinc-600 transition-colors group">
                     <span className="text-xs text-zinc-300 font-mono truncate w-[60%]">{room}</span>
@@ -291,7 +292,7 @@ function Join() {
 
       <AnimatePresence>
         {isDeleteModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setIsDeleteModalOpen(false)}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setIsDeleteModalOpen(false)}>
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-[#111111] p-6 rounded-xl w-96 border border-zinc-800" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-medium text-zinc-50 mb-2">Leave or Delete Workspace?</h3>
               <p className="text-zinc-400 text-sm mb-6 leading-relaxed">
@@ -308,7 +309,7 @@ function Join() {
 
       <AnimatePresence>
         {isModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-[#111111] p-6 rounded-xl w-80 border border-zinc-800 relative" onClick={(e) => e.stopPropagation()}>
               <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300">✕</button>
               <h3 className="text-lg font-medium text-zinc-50 mb-4">Secured Room</h3>
