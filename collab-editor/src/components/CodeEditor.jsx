@@ -12,7 +12,7 @@ import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { python } from '@codemirror/lang-python';
 
-const EditorPane = ({ ydoc, activeFileId, activeFile }) => {
+const EditorPane = ({ ydoc, activeFileId, activeFile, isViewer }) => {
   const [initialValue] = useState(() => {
     return ydoc ? ydoc.getText(activeFileId).toString() : '';
   });
@@ -35,24 +35,30 @@ const EditorPane = ({ ydoc, activeFileId, activeFile }) => {
       value={initialValue}
       height="100%"
       theme="dark"
+      readOnly={isViewer} // SECURED: Disables typing for viewers
+      editable={!isViewer} // Backup lock for some CodeMirror versions
       extensions={extensions}
-      className="h-full text-sm"
+      className={`h-full text-sm ${isViewer ? 'opacity-80' : ''}`}
     />
   );
 };
 
-const CodeEditor = ({ socket, roomId }) => {
+// Receive activeUsers and localUsername as props from EditorPage
+const CodeEditor = ({ socket, roomId, activeUsers = [], localUsername }) => {
   const files = useSelector((state) => state.files.files);
   const activeFileId = useSelector((state) => state.files.activeFileId);
   const activeFile = files.find(f => f.id === activeFileId);
   const dispatch = useDispatch();
 
   const [ydoc, setYdoc] = useState(null);
-  const [activeUsers, setActiveUsers] = useState(1);
   const [ping, setPing] = useState(0);
 
   const [terminalHeight, setTerminalHeight] = useState(200); 
   const isDraggingTerminal = useRef(false);
+
+  // Check role to disable inputs
+  const currentUser = activeUsers.find(u => u.username === localUsername);
+  const isViewer = currentUser?.role === 'viewer';
 
   const handleTerminalMouseDown = (e) => {
     e.preventDefault();
@@ -83,13 +89,16 @@ const CodeEditor = ({ socket, roomId }) => {
     setYdoc(doc);
 
     doc.on('update', (update, origin) => {
-      if (origin !== 'remote') socket.emit('code-update', { roomId, update });
+      // Only emit changes if user has permission
+      if (origin !== 'remote' && !isViewer) {
+        socket.emit('code-update', { roomId, update });
+      }
     });
 
     const handleRemoteUpdate = (update) => Y.applyUpdate(doc, new Uint8Array(update), 'remote');
-    const handleRoomMetrics = (metrics) => setActiveUsers(metrics.activeUsers);
 
     const handleInjectContent = (e) => {
+      if (isViewer) return; // Prevent injection if viewer
       let { fileId, content } = e.detail;
       const ytext = doc.getText(fileId);
       if (ytext.length === 0 && content) {
@@ -99,7 +108,6 @@ const CodeEditor = ({ socket, roomId }) => {
     };
 
     socket.on('code-update', handleRemoteUpdate);
-    socket.on('room-metrics', handleRoomMetrics);
     window.addEventListener('inject-yjs-content', handleInjectContent);
 
     socket.emit('request-initial-code', roomId);
@@ -111,12 +119,11 @@ const CodeEditor = ({ socket, roomId }) => {
 
     return () => {
       socket.off('code-update', handleRemoteUpdate);
-      socket.off('room-metrics', handleRoomMetrics);
       window.removeEventListener('inject-yjs-content', handleInjectContent);
       clearInterval(pingInterval);
       doc.destroy();
     };
-  }, [socket, roomId]);
+  }, [socket, roomId, isViewer]);
 
   useEffect(() => {
     const handleDownload = () => {
@@ -136,14 +143,11 @@ const CodeEditor = ({ socket, roomId }) => {
     return () => window.removeEventListener('download-active-file', handleDownload);
   }, [activeFileId, activeFile, ydoc]);
 
-  // ==========================================
-  // NEW: SMART RUN BUTTON LOGIC
-  // ==========================================
   const handleRunCode = () => {
+    if (isViewer) return; // Final block
     if (!ydoc || !activeFileId || !activeFile) return;
     const currentCode = ydoc.getText(activeFileId).toString();
 
-    // Send the code directly to the new terminal engine!
     socket.emit("run-code", {
       roomId,
       filename: activeFile.name,
@@ -193,12 +197,17 @@ const CodeEditor = ({ socket, roomId }) => {
     );
   }
 
-  // Check if the file is a Python or JavaScript file so we can enable the button
   const isExecutable = activeFile?.name.endsWith('.js') || activeFile?.name.endsWith('.py');
 
   return (
     <div className="relative w-full h-full bg-black flex flex-col font-sans">
       
+      {isViewer && (
+        <div className="absolute top-12 right-4 z-10 bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 px-3 py-1 rounded text-xs">
+          Read-Only Mode
+        </div>
+      )}
+
       {/* TABS */}
       <div className="flex bg-[#111111] border-b border-zinc-800 overflow-x-auto shrink-0 hide-scrollbar pt-2 px-2 gap-1">
         {files.map((file) => (
@@ -230,24 +239,26 @@ const CodeEditor = ({ socket, roomId }) => {
             Preview Webpage
           </button>
 
-          {/* SMART RUN BUTTON */}
-          <button 
-            onClick={handleRunCode}
-            disabled={!isExecutable}
-            className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-              !isExecutable 
-                ? 'bg-[#111111] text-zinc-600 border border-zinc-800 cursor-not-allowed' 
-                : 'bg-zinc-50 text-black hover:bg-zinc-200'
-            }`}
-          >
-            Run Code
-          </button>
+          {/* HIDE run button entirely if viewer, otherwise use normal logic */}
+          {!isViewer && (
+            <button 
+              onClick={handleRunCode}
+              disabled={!isExecutable}
+              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                !isExecutable 
+                  ? 'bg-[#111111] text-zinc-600 border border-zinc-800 cursor-not-allowed' 
+                  : 'bg-zinc-50 text-black hover:bg-zinc-200'
+              }`}
+            >
+              Run Code
+            </button>
+          )}
         </div>
       </div>
 
       {/* EDITOR */}
-      <div className="grow overflow-hidden bg-black">
-        <EditorPane key={activeFileId} ydoc={ydoc} activeFileId={activeFileId} activeFile={activeFile} />
+      <div className="grow overflow-hidden bg-black relative">
+        <EditorPane key={activeFileId} ydoc={ydoc} activeFileId={activeFileId} activeFile={activeFile} isViewer={isViewer} />
       </div>
 
       {/* TERMINAL RESIZER */}
@@ -266,14 +277,14 @@ const CodeEditor = ({ socket, roomId }) => {
         </div>
         
         <div className="flex-grow overflow-hidden relative">
-           <TerminalPanel socket={socket} roomId={roomId} />
+           <TerminalPanel socket={socket} roomId={roomId} isViewer={isViewer} />
         </div>
       </div>
 
       {/* STATUS BAR */}
       <div className="bg-[#111111] border-t border-zinc-800 text-zinc-500 px-4 py-1.5 flex justify-between items-center text-[10px] uppercase tracking-wider shrink-0 select-none">
         <div className="flex space-x-6">
-          <span>Users: {activeUsers}</span>
+          <span>Users: {activeUsers.length}</span>
           <span>Ping: {ping}ms</span>
         </div>
         <div>

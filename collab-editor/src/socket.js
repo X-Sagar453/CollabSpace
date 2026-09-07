@@ -8,4 +8,4 @@ export const socket = io(URL, {
     // Send the token on every socket connection/reconnection
     cb({ token: localStorage.getItem('token') });
   }
-});
+}); 

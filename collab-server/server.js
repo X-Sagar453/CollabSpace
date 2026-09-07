@@ -8,8 +8,8 @@ const path = require("path");
 const { exec } = require("child_process");
 const { v4: uuidv4 } = require("uuid");
 const Y = require("yjs");
-const os = require("os"); // NEW: Needed for PTY
-const pty = require("node-pty"); // NEW: The Terminal Engine
+const os = require("os"); 
+const pty = require("node-pty"); 
 
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -18,15 +18,23 @@ const Room = require('./models/Room');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+const JWT_SECRET = process.env.JWT_SECRET || "super-secret-collab-key";
+
+// SECURED: Restrict CORS to only your frontend domains
+const allowedOrigins = [
+  "https://collab-space-two.vercel.app",
+  "http://localhost:5173" 
+];
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
   },
 });
@@ -34,8 +42,6 @@ const io = new Server(server, {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB Database'))
   .catch((err) => console.error('❌ MongoDB Connection Error:', err));
-
-const JWT_SECRET = process.env.JWT_SECRET || "super-secret-collab-key";
 
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
@@ -46,9 +52,37 @@ const User = mongoose.model('User', userSchema);
 
 const activeDocs = new Map();
 const roomUsers = new Map(); 
-const activeTerminals = new Map(); // NEW: Tracks terminal processes per room
+const activeTerminals = new Map(); 
 
-// Auto-Save System
+// SECURED: HTTP Bearer Token Middleware
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Missing token' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; 
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Forbidden: Invalid token' });
+  }
+};
+
+// SECURED: WebSocket Handshake Authentication Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('Authentication required'));
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return next(new Error('Authentication failed'));
+    socket.user = decoded; 
+    next();
+  });
+});
+
 setInterval(async () => {
   if (activeDocs.size === 0) return;
   for (const [roomId, doc] of activeDocs.entries()) {
@@ -66,7 +100,14 @@ setInterval(async () => {
 }, 5000); 
 
 io.on("connection", (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
+  console.log(`Socket connected: ${socket.id} (User: ${socket.user.username})`);
+
+  // RBAC HELPER: Check if the socket has write access
+  const canEdit = (socketId, roomId) => {
+    const users = roomUsers.get(roomId) || [];
+    const user = users.find(u => u.id === socketId);
+    return user && (user.role === 'owner' || user.role === 'editor');
+  };
 
   socket.on("join-room", async ({ roomId, password, username }) => {
     try {
@@ -78,7 +119,7 @@ io.on("connection", (socket) => {
       }
 
       if (!room) {
-        room = new Room({ roomId, password: password || null, owner: username, files: [], chatMessages: [] });
+        room = new Room({ roomId, password: password || null, owner: socket.user.username, files: [], chatMessages: [] });
         await room.save();
       }
 
@@ -86,7 +127,10 @@ io.on("connection", (socket) => {
       
       const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500'];
       const userColor = colors[Math.floor(Math.random() * colors.length)];
-      const newUser = { id: socket.id, username: username || 'Anonymous', color: userColor };
+      
+      // RBAC: Assign Owner role if usernames match, otherwise Viewer
+      const role = socket.user.username === room.owner ? 'owner' : 'viewer';
+      const newUser = { id: socket.id, username: socket.user.username, color: userColor, role };
 
       if (!roomUsers.has(roomId)) roomUsers.set(roomId, []);
       roomUsers.get(roomId).push(newUser);
@@ -103,9 +147,6 @@ io.on("connection", (socket) => {
         activeDocs.set(roomId, doc);
       }
 
-      // ==========================================
-      // NEW: INTERACTIVE TERMINAL INITIALIZATION
-      // ==========================================
       if (!activeTerminals.has(roomId)) {
         const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
         const ptyProcess = pty.spawn(shell, [], {
@@ -116,7 +157,6 @@ io.on("connection", (socket) => {
           env: process.env
         });
 
-        // When the hidden server terminal outputs data, send it to the frontend
         ptyProcess.onData((data) => {
           io.to(roomId).emit("terminal-output", data);
         });
@@ -131,10 +171,23 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ==========================================
-  // NEW: TERMINAL I/O LISTENERS
-  // ==========================================
+  // RBAC: Allow owners to change participant roles
+  socket.on("change-role", ({ roomId, targetUserId, newRole }) => {
+    const users = roomUsers.get(roomId) || [];
+    const requester = users.find(u => u.id === socket.id);
+    
+    if (requester && requester.role === 'owner') {
+      const target = users.find(u => u.id === targetUserId);
+      if (target && target.role !== 'owner') { 
+        target.role = newRole;
+        io.to(roomId).emit("room-users-update", users);
+      }
+    }
+  });
+
+  // RBAC SECURED: Block Viewers
   socket.on("terminal-input", ({ roomId, input }) => {
+    if (!canEdit(socket.id, roomId)) return; 
     const ptyProcess = activeTerminals.get(roomId);
     if (ptyProcess) ptyProcess.write(input);
   });
@@ -144,24 +197,20 @@ io.on("connection", (socket) => {
     if (ptyProcess) ptyProcess.resize(cols, rows);
   });
 
-  // ==========================================
-  // NEW: SMART RUN BUTTON LOGIC
-  // ==========================================
+  // RBAC SECURED: Block Viewers
   socket.on("run-code", ({ roomId, filename, code }) => {
+    if (!canEdit(socket.id, roomId)) return; 
     const ptyProcess = activeTerminals.get(roomId);
     if (!ptyProcess) return;
 
-    // 1. Create a safe temporary folder for this room's files
     const roomDir = path.join(__dirname, 'temp', roomId);
     if (!fs.existsSync(roomDir)) {
       fs.mkdirSync(roomDir, { recursive: true });
     }
 
-    // 2. Save the current code to a physical file on the server
     const filePath = path.join(roomDir, filename);
     fs.writeFileSync(filePath, code);
 
-    // 3. Automatically type the run command into the terminal based on the language!
     let command = '';
     if (filename.endsWith('.js')) {
       command = `node "${filePath}"\r`;
@@ -188,21 +237,23 @@ io.on("connection", (socket) => {
     socket.emit("room-users-update", roomUsers.get(roomId) || []);
   });
 
+  // RBAC SECURED: Block Viewers
   socket.on("file-tree-update", async ({ roomId, files }) => {
+    if (!canEdit(socket.id, roomId)) return;
     await Room.findOneAndUpdate({ roomId }, { files, lastUpdated: Date.now() }, { upsert: true });
     socket.to(roomId).emit("file-tree-sync", files);
   });
 
+  // RBAC SECURED: Block Viewers
   socket.on("code-update", ({ roomId, update }) => {
+    if (!canEdit(socket.id, roomId)) return;
     socket.to(roomId).emit("code-update", update); 
     const doc = activeDocs.get(roomId);
     if (doc) Y.applyUpdate(doc, new Uint8Array(update));
   });
 
   socket.on("send-message", async ({ roomId, message }) => {
-    const usersInRoom = roomUsers.get(roomId) || [];
-    const user = usersInRoom.find(u => u.id === socket.id);
-    if (user) message.sender = user.username; 
+    message.sender = socket.user.username; 
     io.to(roomId).emit("receive-message", message);
     await Room.findOneAndUpdate({ roomId }, { $push: { chatMessages: message }, lastUpdated: Date.now() });
   });
@@ -220,7 +271,6 @@ io.on("connection", (socket) => {
             await Room.findOneAndUpdate({ roomId }, { ydocState: Buffer.from(state), lastUpdated: Date.now() }, { upsert: true });
             activeDocs.delete(roomId); 
           }
-          // NEW: Destroy the terminal process when the room is empty to save RAM
           const ptyProcess = activeTerminals.get(roomId);
           if (ptyProcess) {
             ptyProcess.kill();
@@ -238,26 +288,18 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log(`Socket disconnected: ${socket.id}`));
 });
 
-// ==========================================
-// RESTORED AUTHENTICATION & ROOM LOGIC
-// ==========================================
-
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    
-    // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       return res.status(400).json({ error: "Email or Username already taken." });
     }
 
-    // Hash password and save
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({ username, email, password: hashedPassword });
     await newUser.save();
 
-    // Generate Token
     const token = jwt.sign({ id: newUser._id, username: newUser.username }, JWT_SECRET, { expiresIn: '7d' });
     res.status(201).json({ token, username: newUser.username });
   } catch (error) {
@@ -269,20 +311,16 @@ app.post("/api/auth/register", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password." });
     }
 
-    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid email or password." });
     }
 
-    // Generate Token
     const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     res.status(200).json({ token, username: user.username });
   } catch (error) {
@@ -291,14 +329,11 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-app.get("/api/room/:roomId", async (req, res) => { 
+app.get("/api/room/:roomId", verifyToken, async (req, res) => { 
     try {
         const room = await Room.findOne({ roomId: req.params.roomId });
-        
-        // Return 404 if it doesn't exist
         if (!room) return res.status(404).json({ error: "Room not found" });
         
-        // Return 200 if it does exist
         res.status(200).json({ 
             hasPassword: !!room.password, 
             owner: room.owner 
@@ -308,9 +343,9 @@ app.get("/api/room/:roomId", async (req, res) => {
     }
 });
 
-app.delete("/api/room/:roomId", async (req, res) => {
+app.delete("/api/room/:roomId", verifyToken, async (req, res) => {
   try {
-    const { username } = req.query;
+    const username = req.user.username; 
     const room = await Room.findOne({ roomId: req.params.roomId });
     
     if (!room) return res.status(404).json({ error: "Room not found" });
@@ -319,7 +354,6 @@ app.delete("/api/room/:roomId", async (req, res) => {
     await Room.findOneAndDelete({ roomId: req.params.roomId });
     if (activeDocs.has(req.params.roomId)) activeDocs.delete(req.params.roomId);
     
-    // NEW: Destroy terminal on global deletion
     const ptyProcess = activeTerminals.get(req.params.roomId);
     if (ptyProcess) {
       ptyProcess.kill();
@@ -331,9 +365,6 @@ app.delete("/api/room/:roomId", async (req, res) => {
     res.status(500).json({ error: "Failed to delete room" });
   }
 });
-
-// We are leaving the old Docker execution endpoint here temporarily in case you still want to use it
-app.post("/execute", (req, res) => { /* Docker Logic (Unchanged) */ });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));

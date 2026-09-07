@@ -28,7 +28,10 @@ function EditorPage() {
   const [localUsername, setLocalUsername] = useState(initialUsername);
   const [hasJoined, setHasJoined] = useState(!!initialUsername);
 
-  // FIX: Save history specific to the logged-in user
+  // Determine current user's role for UI conditionals
+  const currentUser = activeUsers.find(u => u.username === localUsername);
+  const isOwner = currentUser?.role === 'owner';
+
   useEffect(() => {
     if (roomId && hasJoined && localUsername) {
       const historyKey = `recentRooms_${localUsername}`;
@@ -57,7 +60,7 @@ function EditorPage() {
 
     const handleAuthError = (errorMessage) => {
       alert(errorMessage); 
-      navigate('/');       
+      navigate('/');      
     };
 
     socket.on("connect", onConnect);
@@ -187,25 +190,52 @@ function EditorPage() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 mt-2 w-56 bg-[#111111] border border-zinc-800 rounded-lg shadow-2xl z-50 overflow-hidden"
+                    className="absolute right-0 mt-2 w-64 bg-[#111111] border border-zinc-800 rounded-lg shadow-2xl z-50 overflow-hidden"
                   >
-                    <div className="px-4 py-2 border-b border-zinc-800 bg-black">
+                    <div className="px-4 py-2 border-b border-zinc-800 bg-black flex justify-between items-center">
                       <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Active in Room</h4>
                     </div>
                     
                     <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
                       {activeUsers.map((user) => (
-                        <div key={user.id} className="flex items-center px-3 py-2 rounded hover:bg-zinc-900 transition-colors">
-                          <div className="w-6 h-6 rounded bg-zinc-800 flex shrink-0 items-center justify-center text-zinc-300 text-[10px] font-bold">
-                            {user.username.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="ml-2.5 text-xs text-zinc-300 truncate">{user.username}</span>
+                        <div key={user.id} className="flex items-center justify-between px-3 py-2 rounded hover:bg-zinc-900 transition-colors">
                           
-                          {(user.username === localUsername || user.id === socket.id) && (
-                            <span className="ml-auto text-[9px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
-                              You
+                          <div className="flex items-center min-w-0 pr-2">
+                            <div className="w-6 h-6 rounded bg-zinc-800 flex shrink-0 items-center justify-center text-zinc-300 text-[10px] font-bold">
+                              {user.username.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="ml-2.5 text-xs text-zinc-300 truncate max-w-[80px]" title={user.username}>
+                              {user.username}
                             </span>
-                          )}
+                            {(user.username === localUsername || user.id === socket.id) && (
+                              <span className="ml-2 text-[9px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
+                                You
+                              </span>
+                            )}
+                          </div>
+
+                          {/* ROLE SELECTOR UI */}
+                          <div className="flex shrink-0 items-center">
+                            {isOwner && user.role !== 'owner' ? (
+                              <select 
+                                value={user.role || 'viewer'} 
+                                onChange={(e) => socket.emit("change-role", { roomId, targetUserId: user.id, newRole: e.target.value })}
+                                className="bg-black border border-zinc-700 text-[10px] text-zinc-300 py-1 px-1.5 rounded outline-none focus:border-blue-500"
+                              >
+                                <option value="viewer">Viewer</option>
+                                <option value="editor">Editor</option>
+                              </select>
+                            ) : (
+                              <span className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${
+                                user.role === 'owner' ? 'bg-blue-500/20 text-blue-400' :
+                                user.role === 'editor' ? 'bg-emerald-500/20 text-emerald-400' :
+                                'bg-zinc-800 text-zinc-500'
+                              }`}>
+                                {user.role || 'viewer'}
+                              </span>
+                            )}
+                          </div>
+
                         </div>
                       ))}
                       
@@ -232,9 +262,11 @@ function EditorPage() {
       </header>
 
       <main className="grow flex w-full h-full overflow-hidden">
-        <Sidebar socket={socket} roomId={roomId} />
+        {/* Pass activeUsers to Sidebar so it can disable file uploads for viewers if needed */}
+        <Sidebar socket={socket} roomId={roomId} activeUsers={activeUsers} localUsername={localUsername} />
         <div className="grow relative h-full">
-          <CodeEditor socket={socket} roomId={roomId} />
+          {/* Pass activeUsers and localUsername to CodeEditor to handle readOnly state */}
+          <CodeEditor socket={socket} roomId={roomId} activeUsers={activeUsers} localUsername={localUsername} />
         </div>
       </main>
     </div>
