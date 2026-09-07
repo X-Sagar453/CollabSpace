@@ -9,8 +9,9 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 function Join() {
   const navigate = useNavigate();
   const savedUsername = localStorage.getItem('username');
+  const token = localStorage.getItem('token'); // Retrieve token for API authorization
 
-  useEffect(() => { if (!savedUsername) navigate('/auth'); }, [navigate, savedUsername]);
+  useEffect(() => { if (!savedUsername || !token) navigate('/auth'); }, [navigate, savedUsername, token]);
 
   const [isJoinMode, setIsJoinMode] = useState(true);
   const [roomError, setRoomError] = useState('');
@@ -54,8 +55,10 @@ function Join() {
     if (!trimmedId) return;
 
     try {
-      // SECURED: Using dynamic environment variable
-      const res = await fetch(`${BACKEND_URL}/api/room/${trimmedId}`);
+      // SECURED: Added JWT Authorization Header
+      const res = await fetch(`${BACKEND_URL}/api/room/${trimmedId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
       if (isJoinMode) {
         if (res.status === 404) {
@@ -81,8 +84,10 @@ function Join() {
     if (!selectedRecentRoom) return;
     
     try {
-      // SECURED: Using dynamic environment variable
-      const res = await fetch(`${BACKEND_URL}/api/room/${selectedRecentRoom}`);
+      // SECURED: Added JWT Authorization Header
+      const res = await fetch(`${BACKEND_URL}/api/room/${selectedRecentRoom}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
       if (res.status === 404) { 
         alert("This workspace no longer exists. It may have been deleted.");
@@ -113,8 +118,11 @@ function Join() {
   const confirmDeleteRoom = async () => {
     if (!roomToDelete) return;
     try {
-      // SECURED: Using dynamic environment variable
-      const res = await fetch(`${BACKEND_URL}/api/room/${roomToDelete}?username=${username}`, { method: 'DELETE' });
+      // SECURED: Replaced query string with JWT Bearer Token in Headers
+      const res = await fetch(`${BACKEND_URL}/api/room/${roomToDelete}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
       if (res.status === 403) {
         // Silently handle the 403 (user is not the owner)

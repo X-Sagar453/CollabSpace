@@ -1,5 +1,5 @@
 // src/components/Auth.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -11,6 +11,15 @@ function Auth() {
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // SECURED: Route Guard to prevent already-logged-in users from accessing the auth page
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const username = localStorage.getItem('username');
+    if (token && username) {
+      navigate('/join');
+    }
+  }, [navigate]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -28,7 +37,6 @@ function Auth() {
       : { username: formData.username, email: formData.email, password: formData.password };
 
     try {
-      // SECURED: Using dynamic environment variable
       const res = await fetch(`${BACKEND_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -56,7 +64,7 @@ function Auth() {
     <div className="relative min-h-screen w-full bg-black text-zinc-50 flex flex-col items-center justify-center overflow-hidden font-sans">
       
       {/* ULTRA MINIMAL BACKGROUND GRID */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[24px_24px]"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
 
       {/* TOP LOGO REDIRECT */}
       <div className="absolute top-8 left-8 z-20">
